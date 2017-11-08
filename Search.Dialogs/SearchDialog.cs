@@ -1,5 +1,6 @@
 ﻿namespace Search.Dialogs
 {
+    using System.Text;
     using System;
     using System.Collections.Generic;
     using System.Linq;
@@ -44,7 +45,7 @@
             this.MultipleSelection = multipleSelection;
         }
 
-        public Task StartAsync(IDialogContext context) 
+        public Task StartAsync(IDialogContext context)
         {
             return this.InitialPrompt(context);
         }
@@ -239,15 +240,15 @@
             try
             {
                 logger.Info("starting response");
-                RunGenericPyfetch(url, k, context);
+                await RunGenericPyfetch(url, k, context);
             }
             catch (Exception e)
             {
-                PromptDialog.Text(context, this.ShouldContinueOps, "Fail whale ... " + e.Message);            
+                PromptDialog.Text(context, this.ShouldContinueOps, "Fail whale ... " + e.Message);
             }
         }
 
-        private void RunGenericPyfetch(string url1, string args, IDialogContext context)
+        private async Task RunGenericPyfetch(string url1, string args, IDialogContext context)
         {
             string result = string.Empty;
             var parms = args.Replace(" ", "+");
@@ -266,49 +267,51 @@
                 if (!string.IsNullOrEmpty(result))
                 {
                     var resultList = JsonConvert.DeserializeObject<List<RootObject>>(result);
-                    if (resultList.Count() == 1)
+                    if (resultList.Count() > 0)
                     {
-                        var resultTwo = resultList[0];
-                        if (resultTwo.type.Equals("cards"))
-                        {
+                        parseResultSet(resultList, context);
 
-                            var cardData = JsonConvert.DeserializeObject<List<RootCardObject>>(resultTwo.data.ToString());
-                            if (cardData.Any())
-                            {
-                                var cards = new List<ThumbnailCard>();
-                                foreach (var s in cardData)
-                                {
-                                    var card = new ThumbnailCard
-                                    {
-                                        Title = s.title,
-                                        Images = new[] { new CardImage(s.img) },
-                                        Text = s.description
-                                    };
-                                    cards.Add(card);
-                                }
-                                var message = context.MakeMessage();
-                                message.AttachmentLayout = AttachmentLayoutTypes.Carousel;
-                                message.Attachments = cards.Select(p => p.ToAttachment()).ToList();
-                                context.PostAsync(message);
-                                PromptDialog.Text(context, this.ShouldContinueOps, resultList[0].data.ToString());
-                            }
-                            else
-                            {
-                                PromptDialog.Text(context, this.ShouldContinueOps, "Oops .. No results here .. try something else!");
-                            }
-                        }
-                        else
-                        {
-                            var restext = resultList[0].data.ToString();
-                            if (!string.IsNullOrEmpty(restext))
-                            {
-                                PromptDialog.Text(context, this.ShouldContinueOps, restext);
-                            }
-                            else
-                            {
-                                PromptDialog.Text(context, this.ShouldContinueOps, "Check your script again.. data seems to be empty :)");
-                            }
-                        }
+                        //var resultTwo = resultList[0];
+                        //if (resultTwo.type.Equals("cards"))
+                        //{
+
+                        //    var cardData = JsonConvert.DeserializeObject<List<RootCardObject>>(resultTwo.data.ToString());
+                        //    if (cardData.Any())
+                        //    {
+                        //        var cards = new List<ThumbnailCard>();
+                        //        foreach (var s in cardData)
+                        //        {
+                        //            var card = new ThumbnailCard
+                        //            {
+                        //                Title = s.title,
+                        //                Images = new[] { new CardImage(s.img) },
+                        //                Text = s.description
+                        //            };
+                        //            cards.Add(card);
+                        //        }
+                        //        var message = context.MakeMessage();
+                        //        message.AttachmentLayout = AttachmentLayoutTypes.Carousel;
+                        //        message.Attachments = cards.Select(p => p.ToAttachment()).ToList();
+                        //        context.PostAsync(message);
+                        //        PromptDialog.Text(context, this.ShouldContinueOps, resultList[0].data.ToString());
+                        //    }
+                        //    else
+                        //    {
+                        //        PromptDialog.Text(context, this.ShouldContinueOps, "Oops .. No results here .. try something else!");
+                        //    }
+                        //}
+                        //else
+                        //{
+                        //    var restext = resultList[0].data.ToString();
+                        //    if (!string.IsNullOrEmpty(restext))
+                        //    {
+                        //        PromptDialog.Text(context, this.ShouldContinueOps, restext);
+                        //    }
+                        //    else
+                        //    {
+                        //        PromptDialog.Text(context, this.ShouldContinueOps, "Check your script again.. data seems to be empty :)");
+                        //    }
+                        //}
                     }
                     else
                     {
@@ -322,6 +325,39 @@
             }
 
         }
+
+        void parseResultSet(List<RootObject> roots, IDialogContext context)
+        {
+            StringBuilder sb = new StringBuilder();
+
+            foreach (RootObject root in roots)
+            {
+                if (root.type.Equals("string"))
+                {
+                    var restext = root.data?.ToString();
+
+                    if (!string.IsNullOrWhiteSpace(restext))
+                    {
+                        sb.AppendLine(restext);
+                    }
+                }
+                //else if (root.type.Equals("cards"))
+                //{
+
+                //}
+            }
+
+            string chatmsg = sb.ToString();
+            if (!string.IsNullOrWhiteSpace(chatmsg))
+            {
+                PromptDialog.Text(context, this.ShouldContinueOps, chatmsg);
+            }
+            else
+            {
+                PromptDialog.Text(context, this.ShouldContinueOps, "Check your script again.. data seems to be empty :)");
+            }
+        }
+
 
         //private async Task HandleBookSearch(IDialogContext context, IAwaitable<string> result)
         //{
@@ -395,7 +431,7 @@
         //    {
         //        resultstr = "Error in python code";
         //    }
-            
+
         //    PromptDialog.Text(context, this.ShouldContinueOps, resultstr);
         //}
 
@@ -527,7 +563,7 @@
         //    if (!string.IsNullOrEmpty(result))
         //    {
         //        var resultFromGoogle = JsonConvert.DeserializeObject<List<RootGoogleObject>>(result);
-                
+
         //        if (resultFromGoogle.Any())
         //        {
         //            foreach (var s in resultFromGoogle)
