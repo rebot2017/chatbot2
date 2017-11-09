@@ -1,14 +1,15 @@
-﻿namespace RealEstateBot
-{
-    using System.Net;
-    using System.Net.Http;
-    using System.Threading.Tasks;
-    using System.Web.Http;
-    using Autofac;
-    using Microsoft.Bot.Builder.Dialogs;
-    using Microsoft.Bot.Builder.Dialogs.Internals;
-    using Microsoft.Bot.Connector;
+﻿using System.Net;
+using System.Net.Http;
+using System.Threading.Tasks;
+using System.Web.Http;
+using Autofac;
+using Microsoft.Bot.Builder.Dialogs;
+using Microsoft.Bot.Builder.Dialogs.Internals;
+using Microsoft.Bot.Connector;
+using RealEstateBot.Dialogs;
 
+namespace RealEstateBot
+{
     [BotAuthentication]
     public class MessagesController : ApiController
     {
@@ -22,7 +23,7 @@
             {
                 using (var scope = DialogModule.BeginLifetimeScope(Conversation.Container, activity))
                 {
-                    await Conversation.SendAsync(activity, () => scope.Resolve<IDialog<object>>());
+                    await Conversation.SendAsync(activity, () => scope.Resolve<RebotDialog>());
                 }
             }
             else

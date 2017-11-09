@@ -11,11 +11,11 @@
     using Search.Services;
 
     [Serializable]
-    public class IntroDialog : IDialog<object>
+    public class RebotDialog : IDialog<object>
     {
         private ISearchClient searchClient;
 
-        public IntroDialog(ISearchClient searchClient)
+        public RebotDialog(ISearchClient searchClient)
         {
             SetField.NotNull(out this.searchClient, nameof(searchClient), searchClient);
         }

@@ -17,8 +17,8 @@
         {
             Conversation.UpdateContainer(builder =>
             {
-                builder.RegisterType<IntroDialog>()
-                  .As<IDialog<object>>()
+                builder.RegisterType<RebotDialog>()
+                  .As<RebotDialog>()
                   .InstancePerDependency();
 
                 builder.RegisterType<RealEstateMapper>()
