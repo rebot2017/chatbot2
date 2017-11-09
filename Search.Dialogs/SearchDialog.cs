@@ -61,27 +61,28 @@
             return this.PromptRouter(context);
         }
 
-        protected virtual Task PromptRouter(IDialogContext context)
+        protected virtual async Task PromptRouter(IDialogContext context)
         {
             var data = context.UserData;
             if (!data.ContainsKey("userid"))
             {
-                this.PromptUserId(context);
+                await this.PromptUserId(context);
             }
-            else if (!debug && !data.ContainsKey("session"))
+            else if (!data.ContainsKey("session"))
             {
-                //this.PromptSessionChoices(context);
+                await this.PromptSessionChoices(context);
             }
             else if (!debug && data.GetValue<string>("session") == "simple")
             {
+                await this.DisplayInformation(context);
                 //this.StartSimpleTutorial(context);
             }
             else if (debug || data.GetValue<string>("session") == "challenge")
             {
-                this.StartChallenge(context);
+                await this.DisplayInformation(context);
+                await this.StartChallenge(context);
             }
 
-            return Task.CompletedTask;
         }
 
         async Task ShouldContinueOps(IDialogContext context, IAwaitable<string> result)
@@ -93,20 +94,30 @@
             await this.PromptRouter(context);
         }
 
-        void PromptUserId(IDialogContext context)
+        async Task DisplayInformation(IDialogContext context)
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine(string.Format("Userid = {0}</br>", context.UserData.GetValueOrDefault<string>("userid", null)));
+            sb.AppendLine(string.Format("Session = {0}", context.UserData.GetValueOrDefault<string>("session", null)));
+            await context.PostAsync(sb.ToString());
+        }
+
+        Task PromptUserId(IDialogContext context)
         {
             var data = context.UserData;
             if (data.GetValueOrDefault("attempts", 0) ==  0)
             {
-                PromptDialog.Text(context, this.ReceiveUserIdAsync, Conversations.TellMeYourId);
+                PromptDialog.Text(context, this.HandleUserIdResponseAsync, Conversations.TellMeYourId);
             }
             else
             {
-                PromptDialog.Text(context, this.ReceiveUserIdAsync, Conversations.TellMeYourIdAgain);
+                PromptDialog.Text(context, this.HandleUserIdResponseAsync, Conversations.TellMeYourIdAgain);
             }
+
+            return Task.CompletedTask;
         }
 
-        async Task ReceiveUserIdAsync(IDialogContext context, IAwaitable<string> result)
+        async Task HandleUserIdResponseAsync(IDialogContext context, IAwaitable<string> result)
         {
             var value = (await result).ToLower();
             if (string.IsNullOrEmpty(value) || value.Contains(" "))
@@ -125,8 +136,27 @@
                 await context.PostAsync(string.Format("Thanks, we have added '{0}' as your id :)", value));
                 await this.ShouldContinueOps(context);
             }
-
         }
+
+        Task PromptSessionChoices(IDialogContext context)
+        {
+            var options = new List<string>() { "Just the Tutorial", "Challenge Accepted!" };
+            PromptDialog.Choice<string>(context, this.HandleSessionResponse, options, Conversations.ChooseYourSession);
+            return Task.CompletedTask;
+        }
+
+        private async Task HandleSessionResponse(IDialogContext context, IAwaitable<string> result)
+        {
+            var value = (await result);
+            value = "Just the Tutorial" == value ? "simple" : "challenge";
+
+            var data = context.UserData;
+            data.SetValue("session", value);
+
+            await context.PostAsync(string.Format("Thanks, '{0}'", value));
+            await this.ShouldContinueOps(context);
+        }
+
 
         #region Challenge
 
@@ -179,7 +209,7 @@
 
                 if (response.StatusCode != HttpStatusCode.OK)
                 {
-                    throw new IOException("Unable to reach the server");
+                    throw new IOException(Conversations.ERROR_CANNOT_CONNECT_TO_PYTHONAPI);
                 }
 
                 var content = await response.Content.ReadAsStringAsync();
@@ -235,7 +265,7 @@
             }
             catch (Exception e)
             {
-                PromptDialog.Text(context, this.ShouldContinueOps, "Something quite wrong with the way you are doing things.. here's a very technical exception :P " + e.Message);
+                PromptDialog.Text(context, this.ShouldContinueOps, e.Message);
             }
 
         }

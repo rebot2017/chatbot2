@@ -20,20 +20,39 @@ namespace Search.Dialogs
             "Hmm, so can you use another user id?"
         };
 
+        static readonly String[] sessionChoices = {
+            "So what do you want to do?"
+        };
+
         public static string TellMeYourId
         {
             get
             {
-                return tellMeid[randomizer.Next(0, tellMeid.Length - 1)];
+                return randomString(tellMeid);
             }
         }
+
         public static string TellMeYourIdAgain
         {
             get
             {
-                return tellMeidAgain[randomizer.Next(0, tellMeidAgain.Length - 1)];
+                return randomString(tellMeidAgain);
             }
         }
+
+        public static string ChooseYourSession
+        {
+            get
+            {
+                return randomString(sessionChoices);
+            }
+        }
+
+        static string randomString(string[] stringSet)
+        {
+            return stringSet[randomizer.Next(0, stringSet.Length - 1)];
+        }
+
         public static string ERROR_INVALID_USERID
         {
             get
@@ -42,5 +61,20 @@ namespace Search.Dialogs
             }
         }
 
+        static string error_prefix
+        {
+            get
+            {
+                return "Uh oops.. Seems like I ";
+            }
+        }
+
+        public static string ERROR_CANNOT_CONNECT_TO_PYTHONAPI
+        {
+            get
+            {
+                return error_prefix + "can't talk to your code server.";
+            }
+        }
     }
 }
