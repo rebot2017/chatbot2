@@ -21,7 +21,7 @@ namespace Search.Dialogs
         };
 
         static readonly String[] sessionChoices = {
-            "So what do you want to do?"
+            "What would you like to do?"
         };
 
         public static string TellMeYourId
@@ -45,6 +45,14 @@ namespace Search.Dialogs
             get
             {
                 return randomString(sessionChoices);
+            }
+        }
+
+        public static string PleaseEnterTickerInformation
+        {
+            get
+            {
+                return "Please enter a stock TICKR (eg. MSFT, AAPL, GOOG)";
             }
         }
 
@@ -73,7 +81,7 @@ namespace Search.Dialogs
         {
             get
             {
-                return error_prefix + "can't talk to your code server.";
+                return error_prefix + "can't talk to your code server. Please try again.";
             }
         }
     }

@@ -74,12 +74,12 @@
             }
             else if (!debug && data.GetValue<string>("session") == "simple")
             {
-                await this.DisplayInformation(context);
+                //await this.DisplayInformation(context);
                 //this.StartSimpleTutorial(context);
             }
             else if (debug || data.GetValue<string>("session") == "challenge")
             {
-                await this.DisplayInformation(context);
+                //await this.DisplayInformation(context);
                 await this.StartChallenge(context);
             }
 
@@ -97,15 +97,15 @@
         async Task DisplayInformation(IDialogContext context)
         {
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine(string.Format("Userid = {0}</br>", context.UserData.GetValueOrDefault<string>("userid", null)));
-            sb.AppendLine(string.Format("Session = {0}", context.UserData.GetValueOrDefault<string>("session", null)));
+            sb.AppendLineWithMarkdown(string.Format("Userid  = {0}", context.UserData.GetValueOrDefault<string>("userid", null)));
+            sb.AppendLineWithMarkdown(string.Format("Session = {0}", context.UserData.GetValueOrDefault<string>("session", null)));
             await context.PostAsync(sb.ToString());
         }
 
         Task PromptUserId(IDialogContext context)
         {
             var data = context.UserData;
-            if (data.GetValueOrDefault("attempts", 0) ==  0)
+            if (data.GetValueOrDefault("attempts", 0) == 0)
             {
                 PromptDialog.Text(context, this.HandleUserIdResponseAsync, Conversations.TellMeYourId);
             }
@@ -133,27 +133,47 @@
             {
                 var data = context.UserData;
                 data.SetValue("userid", value);
-                await context.PostAsync(string.Format("Thanks, we have added '{0}' as your id :)", value));
+                await context.PostAsync(string.Format("Thanks, we have added **_{0}_** as your id :)", value));
                 await this.ShouldContinueOps(context);
             }
         }
 
+        private static int retries = 100;
+
         Task PromptSessionChoices(IDialogContext context)
         {
             var options = new List<string>() { "Just the Tutorial", "Challenge Accepted!" };
-            PromptDialog.Choice<string>(context, this.HandleSessionResponse, options, Conversations.ChooseYourSession);
+            PromptDialog.Choice<string>(context,
+                this.HandleSessionResponse,
+                options,
+                Conversations.ChooseYourSession,
+                Conversations.ChooseYourSession,
+                retries);
             return Task.CompletedTask;
         }
 
         private async Task HandleSessionResponse(IDialogContext context, IAwaitable<string> result)
         {
-            var value = (await result);
-            value = "Just the Tutorial" == value ? "simple" : "challenge";
+            var response = (await result);
+
+            string code = string.Empty;
+            string message = string.Empty;
+
+            if (response.Equals("Just the Tutorial"))
+            {
+                code = "simple";
+                message = "Alright, lets do the basics first.";
+            }
+            else
+            {
+                code = "challenge";
+                message = string.Format("Cool! You are now a challenger ;)");
+            }
 
             var data = context.UserData;
-            data.SetValue("session", value);
+            data.SetValue("session", code);
 
-            await context.PostAsync(string.Format("Thanks, '{0}'", value));
+            await context.PostAsync(message);
             await this.ShouldContinueOps(context);
         }
 
@@ -168,7 +188,7 @@
                 return this.ShouldContinueOps(context);
             }
 
-            PromptDialog.Text(context, this.HandleChallengeResponse, "Enter the TICKR for info to be scraped");
+            PromptDialog.Text(context, this.HandleChallengeResponse, Conversations.PleaseEnterTickerInformation);
 
             return Task.CompletedTask;
         }
@@ -181,22 +201,17 @@
             string userid = data.GetValueOrDefault<string>("userid", null);
             if (userid != null)
             {
+                logger.Info("starting response");
                 var ticker = (await result).ToUpper();
-                try
+                string queryUri = string.Format(challengeUri, userid, ticker);
+                if (!await RunGenericPyfetch(queryUri, context))
                 {
-                    logger.Info("starting response");
-                    string queryUri = string.Format(challengeUri, userid, ticker);
-                    await RunGenericPyfetch(queryUri, context);
-                }
-                catch (Exception e)
-                {
-                    PromptDialog.Text(context, this.ShouldContinueOps, "Fail whale ... " + e.Message);
-                }
-
+                    await this.ShouldContinueOps(context);
+                };
             }
         }
 
-        private async Task RunGenericPyfetch(string pyUri, IDialogContext context)
+        private async Task<bool> RunGenericPyfetch(string pyUri, IDialogContext context)
         {
             logger.Info($"{pyUri}");
             try
@@ -209,7 +224,8 @@
 
                 if (response.StatusCode != HttpStatusCode.OK)
                 {
-                    throw new IOException(Conversations.ERROR_CANNOT_CONNECT_TO_PYTHONAPI);
+                    await context.PostAsync(Conversations.ERROR_CANNOT_CONNECT_TO_PYTHONAPI);
+                    return false;
                 }
 
                 var content = await response.Content.ReadAsStringAsync();
@@ -219,6 +235,7 @@
                 {
                     parseResultSet(resultList, context);
 
+                    return true;
                     //var resultTwo = resultList[0];
                     //if (resultTwo.type.Equals("cards"))
                     //{
@@ -268,6 +285,7 @@
                 PromptDialog.Text(context, this.ShouldContinueOps, e.Message);
             }
 
+            return false;
         }
 
         void parseResultSet(List<RootObject> roots, IDialogContext context)
@@ -516,4 +534,16 @@
         public object data { get; set; }
     }
 
+    static class StringBuilderExtension
+    {
+        public static StringBuilder AppendLineWithMarkdown(this StringBuilder sb, string value)
+        {
+            return sb.Append(value + "\n\n");
+        }
+    }
+
+    class ThisEnvironment
+    {
+        public static string NEW_LINE = "\n\n";
+    }
 }
