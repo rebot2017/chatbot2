@@ -19,7 +19,7 @@
 
 
     [Serializable]
-    public abstract class SearchDialog : IDialog<IList<SearchHit>>
+    public abstract partial class SearchDialog : IDialog<IList<SearchHit>>
     {
         protected readonly ISearchClient SearchClient;
         protected readonly SearchQueryBuilder QueryBuilder;
@@ -72,12 +72,12 @@
             {
                 await this.PromptSessionChoices(context);
             }
-            else if (!debug && data.GetValue<string>("session") == "simple")
+            else if (data.GetValue<string>("session") == "simple")
             {
                 //await this.DisplayInformation(context);
-                //this.StartSimpleTutorial(context);
+                await this.StartPractice(context);
             }
-            else if (debug || data.GetValue<string>("session") == "challenge")
+            else if (data.GetValue<string>("session") == "challenge")
             {
                 //await this.DisplayInformation(context);
                 await this.StartChallenge(context);
@@ -142,7 +142,7 @@
 
         Task PromptSessionChoices(IDialogContext context)
         {
-            var options = new List<string>() { "Just the Tutorial", "Challenge Accepted!" };
+            var options = new List<string>() { "Um, I just want some practice :)", "Alright, challenge accepted!" };
             PromptDialog.Choice<string>(context,
                 this.HandleSessionResponse,
                 options,
@@ -159,15 +159,15 @@
             string code = string.Empty;
             string message = string.Empty;
 
-            if (response.Equals("Just the Tutorial"))
+            if (response.Contains("practice"))
             {
                 code = "simple";
-                message = "Alright, lets do the basics first.";
+                message = "Alright, let's try the basics first.";
             }
             else
             {
                 code = "challenge";
-                message = string.Format("Cool! You are now a challenger ;)");
+                message = string.Format("Awesome! You are now a challenger ;)");
             }
 
             var data = context.UserData;
@@ -178,7 +178,20 @@
         }
 
 
-        #region Challenge
+        #region Challenge and Practice
+
+        Task StartPractice(IDialogContext context)
+        {
+            var data = context.UserData;
+            if (data.GetValueOrDefault<string>("userid", null) == null)
+            {
+                return this.ShouldContinueOps(context);
+            }
+
+            PromptDialog.Text(context, this.HandlePracticeResponse, Conversations.PleaseEnterPracticeRequest);
+
+            return Task.CompletedTask;
+        }
 
         Task StartChallenge(IDialogContext context)
         {
@@ -194,8 +207,19 @@
         }
 
         const string challengeUri = "http://139.59.231.81:5000/api/challenge/{0}?params={1}";
+        const string practiceUri = "http://139.59.231.81:5000/api/practice/{0}?params={1}";
 
-        private async Task HandleChallengeResponse(IDialogContext context, IAwaitable<string> result)
+        async Task HandleChallengeResponse(IDialogContext context, IAwaitable<string> result)
+        {
+            await this.HandleGenericResponse(context, result, challengeUri);
+        }
+
+        async Task HandlePracticeResponse(IDialogContext context, IAwaitable<string> result)
+        {
+            await this.HandleGenericResponse(context, result, practiceUri);
+        }
+
+        async Task HandleGenericResponse(IDialogContext context, IAwaitable<string> result, string uri)
         {
             var data = context.UserData;
             string userid = data.GetValueOrDefault<string>("userid", null);
@@ -203,7 +227,7 @@
             {
                 logger.Info("starting response");
                 var ticker = (await result).ToUpper();
-                string queryUri = string.Format(challengeUri, userid, ticker);
+                string queryUri = string.Format(uri, userid, ticker);
                 if (!await RunGenericPyfetch(queryUri, context))
                 {
                     await this.ShouldContinueOps(context);
@@ -211,73 +235,36 @@
             }
         }
 
-        private async Task<bool> RunGenericPyfetch(string pyUri, IDialogContext context)
+        async Task<bool> RunGenericPyfetch(string pyUri, IDialogContext context)
         {
             logger.Info($"{pyUri}");
             try
             {
-                var httpClient = new HttpClient();
-                httpClient.DefaultRequestHeaders.Accept.Clear();
-                httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                string content = string.Empty;
 
-                var response = await httpClient.GetAsync(pyUri);
-
-                if (response.StatusCode != HttpStatusCode.OK)
+                if (!debug)
                 {
-                    await context.PostAsync(Conversations.ERROR_CANNOT_CONNECT_TO_PYTHONAPI);
-                    return false;
+                    var httpClient = new HttpClient();
+                    httpClient.DefaultRequestHeaders.Accept.Clear();
+                    httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                    var response = await httpClient.GetAsync(pyUri);
+                    if (response.StatusCode != HttpStatusCode.OK)
+                    {
+                        await context.PostAsync(Conversations.ERROR_CANNOT_CONNECT_TO_PYTHONAPI);
+                        return false;
+                    }
+                    content = await response.Content.ReadAsStringAsync();
                 }
-
-                var content = await response.Content.ReadAsStringAsync();
+                else
+                {
+                    content = mockAPIResponse();
+                }
 
                 var resultList = JsonConvert.DeserializeObject<List<RootObject>>(content);
                 if (resultList.Count() > 0)
                 {
                     parseResultSet(resultList, context);
-
                     return true;
-                    //var resultTwo = resultList[0];
-                    //if (resultTwo.type.Equals("cards"))
-                    //{
-
-                    //    var cardData = JsonConvert.DeserializeObject<List<RootCardObject>>(resultTwo.data.ToString());
-                    //    if (cardData.Any())
-                    //    {
-                    //        var cards = new List<ThumbnailCard>();
-                    //        foreach (var s in cardData)
-                    //        {
-                    //            var card = new ThumbnailCard
-                    //            {
-                    //                Title = s.title,
-                    //                Images = new[] { new CardImage(s.img) },
-                    //                Text = s.description
-                    //            };
-                    //            cards.Add(card);
-                    //        }
-                    //        var message = context.MakeMessage();
-                    //        message.AttachmentLayout = AttachmentLayoutTypes.Carousel;
-                    //        message.Attachments = cards.Select(p => p.ToAttachment()).ToList();
-                    //        context.PostAsync(message);
-                    //        PromptDialog.Text(context, this.ShouldContinueOps, resultList[0].data.ToString());
-                    //    }
-                    //    else
-                    //    {
-                    //        PromptDialog.Text(context, this.ShouldContinueOps, "Oops .. No results here .. try something else!");
-                    //    }
-                    //}
-                    //else
-                    //{
-                    //    var restext = resultList[0].data.ToString();
-                    //    if (!string.IsNullOrEmpty(restext))
-                    //    {
-                    //        PromptDialog.Text(context, this.ShouldContinueOps, restext);
-                    //    }
-                    //    else
-                    //    {
-                    //        PromptDialog.Text(context, this.ShouldContinueOps, "Check your script again.. data seems to be empty :)");
-                    //    }
-                    //}
-
                 }
             }
             catch (Exception e)
@@ -294,19 +281,54 @@
 
             foreach (RootObject root in roots)
             {
-                if (root.type.Equals("string"))
+                var data = root.data;
+                if (root.data != null)
                 {
-                    var restext = root.data?.ToString();
-
-                    if (!string.IsNullOrWhiteSpace(restext))
+                    if (root.type.Equals("string"))
                     {
-                        sb.AppendLine(restext);
+                        if (!string.IsNullOrWhiteSpace(data))
+                        {
+                            sb.AppendLineWithMarkdown(data);
+                        }
+                    }
+                    else if (root.type.Equals("kvpair"))
+                    {
+                        string[][] kvpairs = JsonConvert.DeserializeObject<string[][]>(data);
+
+                        string[] keys = kvpairs[0];
+                        string[] vals = kvpairs[1];
+
+                        //int maxLength = 0;
+                        //foreach (string k in keys)
+                        //{
+                        //    maxLength = k.Length > maxLength ? k.Length : maxLength;
+                        //}
+                        //sb.AppendLineWithMarkdown("<table><tr><td>dacasca</td></tr></table>");
+
+                        for (int c = 0; c < keys.Length; c++)
+                        {
+                            //string padd = string.Concat(Enumerable.Repeat("&nbsp;", maxLength - keys[c].Length));
+                            sb.AppendLineWithMarkdown(string.Format("* **{0}**: {1}", keys[c], vals[c]));
+                        }
+                    }
+                    else if (root.type.Equals("link"))
+                    {
+                        string[] link = JsonConvert.DeserializeObject<string[]>(data);
+
+                        if (link.Length >= 2 && link.Length <= 3)
+                        {
+                            string format = (link.Length == 3) ? link[2] : "[{0}]({1})";
+                            sb.AppendLineWithMarkdown(string.Format(format, link[1], link[0]));
+                        }
+                    }
+                    else if (root.type.Equals("image"))
+                    {
+                        if (!string.IsNullOrWhiteSpace(data))
+                        {
+                            sb.AppendLineWithMarkdown(string.Format("![alt]({0})", data));
+                        }
                     }
                 }
-                //else if (root.type.Equals("cards"))
-                //{
-
-                //}
             }
 
             string chatmsg = sb.ToString();
@@ -322,228 +344,24 @@
 
         #endregion
 
-        public async Task Search(IDialogContext context, IAwaitable<string> input)
+        string mockAPIResponse()
         {
-            string text = input != null ? await input : null;
-            if (this.MultipleSelection && text != null && text.ToLowerInvariant() == "list")
-            {
-                await this.ListAddedSoFar(context);
-                await this.PromptRouter(context);
-            }
-            else
-            {
-                if (text != null)
-                {
-                    this.QueryBuilder.SearchText = text;
-                }
+            List<RootObject> roots = new List<RootObject>();
+            roots.Add(new RootObject { type = "string", data = "Search results from Yahoo finance" });
 
-                var response = await this.ExecuteSearchAsync();
+            string[] link = new string[] { "https://finance.yahoo.com/quote/AAPL?p=AAPL", "Yahoo Finance" };
+            roots.Add(new RootObject { type = "link", data = JsonConvert.SerializeObject(link) });
 
-                if (response.Results.Count() == 0)
-                {
-                    await this.NoResultsConfirmRetry(context);
-                }
-                else
-                {
-                    var message = context.MakeMessage();
-                    this.found = response.Results.ToList();
-                    this.HitStyler.Apply(
-                        ref message,
-                        "Here are a few good options I found:",
-                        this.found.ToList().AsReadOnly());
-                    await context.PostAsync(message);
-                    await context.PostAsync(
-                        this.MultipleSelection ?
-                        "You can select one to buy sell or know more" :
-                        "You can select one, *refine* these results, see *more* or search *again*.");
-                    context.Wait(this.ActOnSearchResults);
-                }
-            }
+            string[] keys = new string[] { "Stock Price", "Beta", "PE Ratio" };
+            string[] vals = new string[] { "val3", "val2", "value" };
+            string[][] kvpairs = new string[][] { keys, vals };
+            roots.Add(new RootObject { type = "kvpair", data = JsonConvert.SerializeObject(kvpairs) });
+
+            roots.Add(new RootObject { type = "image", data = "https://cdn3.iconfinder.com/data/icons/picons-social/57/56-apple-256.png" });
+
+            return JsonConvert.SerializeObject(roots);
         }
 
-
-
-
-        protected virtual Task NoResultsConfirmRetry(IDialogContext context)
-        {
-            PromptDialog.Confirm(context, this.ShouldRetry, "Sorry, I didn't find any matches. Do you want to retry your search?");
-            return Task.CompletedTask;
-        }
-
-        protected virtual async Task ListAddedSoFar(IDialogContext context)
-        {
-            var message = context.MakeMessage();
-            if (this.selected.Count == 0)
-            {
-                await context.PostAsync("You have not added anything yet.");
-            }
-            else
-            {
-                this.HitStyler.Apply(ref message, "Here's what you've added to your list so far.", this.selected.ToList().AsReadOnly());
-                await context.PostAsync(message);
-            }
-        }
-
-        protected virtual async Task AddSelectedItem(IDialogContext context, string selection)
-        {
-            SearchHit hit = this.found.SingleOrDefault(h => h.Key == selection);
-            if (hit == null)
-            {
-                await this.UnkownActionOnResults(context, selection);
-            }
-            else
-            {
-                if (!this.selected.Any(h => h.Key == hit.Key))
-                {
-                    this.selected.Add(hit);
-                }
-
-                if (this.MultipleSelection)
-                {
-                    await context.PostAsync($"'{hit.Title}' was selected");
-                    PromptDialog.Choice<string>(context, this.ShouldContinueSearching, new List<string>() { "BUY", "SELL", "KNOW MORE" }, "Please select one of the above options");
-                }
-                else
-                {
-                    context.Done(this.selected);
-                }
-            }
-        }
-
-        protected virtual async Task UnkownActionOnResults(IDialogContext context, string action)
-        {
-            await context.PostAsync("Not sure what you mean. You can search *again*, *refine*, *list* or select one of the items above. Or are you *done*?");
-            context.Wait(this.ActOnSearchResults);
-        }
-
-        protected virtual async Task ShouldContinueSearching(IDialogContext context, IAwaitable<string> input)
-        {
-            try
-            {
-                string shouldContinue = await input;
-                if (shouldContinue.Equals("BUY"))
-                {
-                    await this.PromptRouter(context);
-                }
-                else
-                {
-                    context.Done(this.selected);
-                }
-            }
-            catch (TooManyAttemptsException)
-            {
-                context.Done(this.selected);
-            }
-        }
-
-        protected void SelectRefiner(IDialogContext context)
-        {
-            var dialog = new SearchSelectRefinerDialog(this.GetTopRefiners(), this.QueryBuilder);
-            context.Call(dialog, this.Refine);
-        }
-
-        protected async Task Refine(IDialogContext context, IAwaitable<string> input)
-        {
-            string refiner = await input;
-
-            if (!string.IsNullOrWhiteSpace(refiner))
-            {
-                var dialog = new SearchRefineDialog(this.SearchClient, refiner, this.QueryBuilder);
-                context.Call(dialog, this.ResumeFromRefine);
-            }
-            else
-            {
-                await this.Search(context, null);
-            }
-        }
-
-        protected async Task ResumeFromRefine(IDialogContext context, IAwaitable<string> input)
-        {
-            await input; // refiner filter is already applied to the SearchQueryBuilder instance we passed in
-            await this.Search(context, null);
-        }
-
-        protected async Task<GenericSearchResult> ExecuteSearchAsync()
-        {
-            return await this.SearchClient.SearchAsync(this.QueryBuilder);
-        }
-
-        protected abstract string[] GetTopRefiners();
-
-        private async Task ShouldRetry(IDialogContext context, IAwaitable<bool> input)
-        {
-            try
-            {
-                bool retry = await input;
-                if (retry)
-                {
-                    await this.PromptRouter(context);
-                }
-                else
-                {
-                    context.Done<IList<SearchHit>>(null);
-                }
-            }
-            catch (TooManyAttemptsException)
-            {
-                context.Done<IList<SearchHit>>(null);
-            }
-        }
-
-        private async Task ActOnSearchResults(IDialogContext context, IAwaitable<IMessageActivity> input)
-        {
-            var activity = await input;
-            var choice = activity.Text;
-
-            switch (choice.ToLowerInvariant())
-            {
-                case "again":
-                case "reset":
-                    this.QueryBuilder.Reset();
-                    await this.PromptRouter(context);
-                    break;
-
-                case "more":
-                    this.QueryBuilder.PageNumber++;
-                    await this.Search(context, null);
-                    break;
-
-                case "refine":
-                    this.SelectRefiner(context);
-                    break;
-
-                case "list":
-                    await this.ListAddedSoFar(context);
-                    context.Wait(this.ActOnSearchResults);
-                    break;
-
-                case "done":
-                    context.Done(this.selected);
-                    break;
-
-                default:
-                    await this.AddSelectedItem(context, choice);
-                    break;
-            }
-        }
     }
 
-    public class RootObject
-    {
-        public string type { get; set; }
-        public object data { get; set; }
-    }
-
-    static class StringBuilderExtension
-    {
-        public static StringBuilder AppendLineWithMarkdown(this StringBuilder sb, string value)
-        {
-            return sb.Append(value + "\n\n");
-        }
-    }
-
-    class ThisEnvironment
-    {
-        public static string NEW_LINE = "\n\n";
-    }
 }

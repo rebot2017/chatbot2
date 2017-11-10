@@ -11,13 +11,13 @@ namespace Search.Dialogs
         static readonly Random randomizer = new Random();
 
         static readonly String[] tellMeid = {
-            "Hello! What's your Id ??",
-            "Greetings, can you tell me your Id?"
+            "Hello! What's your userid? (Try your ntid)",
+            "Greetings, can you tell me your Id? (Try your ntid)"
         };
 
         static readonly String[] tellMeidAgain = {
-            "OK, lets try another user id ??",
-            "Hmm, so can you use another user id?"
+            "OK, so let's try another user id? (Use your ntid)",
+            "Hmm, can you use another user id? (Try your ntid)"
         };
 
         static readonly String[] sessionChoices = {
@@ -53,6 +53,14 @@ namespace Search.Dialogs
             get
             {
                 return "Please enter a stock TICKR (eg. MSFT, AAPL, GOOG)";
+            }
+        }
+
+        public static string PleaseEnterPracticeRequest
+        {
+            get
+            {
+                return "Try asking something";
             }
         }
 
